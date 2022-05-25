@@ -4,6 +4,7 @@
 import { Config } from '../fileStores/config'
 import { Logger } from '../logger'
 import { IronfishRpcClient } from '../rpc/clients/rpcClient'
+import { ErrorUtils } from '../utils'
 import { BigIntUtils } from '../utils/bigint'
 import { MapUtils } from '../utils/map'
 import { SetTimeoutToken } from '../utils/types'
@@ -107,6 +108,7 @@ export class MiningPoolShares {
     //  OR we could combine them, every x minutes, pay 10 inputs into 1 output?
 
     // Since timestamps have a 1 second granularity, make the cutoff 1 second ago, just to avoid potential issues
+    this.logger.info('attempting payout')
     const shareCutoff = new Date()
     shareCutoff.setSeconds(shareCutoff.getSeconds() - 1)
     const timestamp = Math.floor(shareCutoff.getTime() / 1000)
@@ -185,7 +187,7 @@ export class MiningPoolShares {
         shareCounts.totalShares,
       )
     } catch (e) {
-      this.logger.error('There was an error with the transaction', e)
+      this.logger.error(`There was an error with the transaction: ${ErrorUtils.renderError(e)}`)
       this.discord?.poolPayoutError(e)
       this.lark?.poolPayoutError(e)
     }
@@ -224,12 +226,14 @@ export class MiningPoolShares {
   }
 
   private startPayoutInterval() {
+    this.logger.debug(`starting payout interval ${this.attemptPayoutInterval}`)
     this.payoutInterval = setInterval(() => {
       void this.createPayout()
     }, this.attemptPayoutInterval * 1000)
   }
 
   private stopPayoutInterval() {
+    this.logger.debug(`stopping payout interval`)
     if (this.payoutInterval) {
       clearInterval(this.payoutInterval)
     }

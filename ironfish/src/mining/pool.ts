@@ -300,6 +300,10 @@ export class MiningPool {
 
   private async processNewBlocks() {
     for await (const payload of this.rpc.blockTemplateStream().contentStream(true)) {
+      const hashRate = await this.estimateHashRate()
+      this.logger.debug(
+        `processing new block. Current hash rate: ${FileUtils.formatHashRate(hashRate)}/s`,
+      )
       Assert.isNotUndefined(payload.previousBlockInfo)
       this.restartCalculateTargetInterval()
 
