@@ -227,6 +227,11 @@ export class IpcAdapter implements IAdapter {
     const message = result.result
     const router = this.router
     const server = this.server
+    this.logger.debug(`received RCP data`, {
+      route: message.type,
+      mid: message.mid,
+      mode: this.connection.mode,
+    })
 
     Assert.isNotNull(router)
     Assert.isNotNull(server)
@@ -234,9 +239,21 @@ export class IpcAdapter implements IAdapter {
     const request = new Request(
       message.data,
       (status: number, data?: unknown) => {
+        this.logger.debug(`sending RPC response`, {
+          route: message.type,
+          mid: message.mid,
+          type: 'end',
+          mode: this.connection.mode,
+        })
         this.emitResponse(socket, message.mid, status, data)
       },
       (data: unknown) => {
+        this.logger.debug(`sending RPC response`, {
+          route: message.type,
+          mid: message.mid,
+          type: 'stream',
+          mode: this.connection.mode,
+        })
         this.emitStream(socket, message.mid, data)
       },
     )

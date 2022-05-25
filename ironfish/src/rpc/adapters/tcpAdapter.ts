@@ -62,6 +62,7 @@ export class TcpAdapter implements IAdapter {
 
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
+      this.logger.debug(`Starting TCP Adapter`)
       this.server = net.createServer((socket) => this.onClientConnection(socket))
 
       this.server.on('error', (err) => {
@@ -142,7 +143,12 @@ export class TcpAdapter implements IAdapter {
     const request = new Request(
       message.data,
       (status: number, data?: unknown) => {
-        this.logger.debug(`sending TCP response`, { route: message.type, mid: message.mid })
+        this.logger.debug(`sending RPC response`, {
+          route: message.type,
+          mid: message.mid,
+          type: 'end',
+          mode: 'tcp',
+        })
         this.emitResponse(
           socket,
           this.constructMessage(message.mid, status, data),
@@ -151,7 +157,12 @@ export class TcpAdapter implements IAdapter {
         )
       },
       (data: unknown) => {
-        this.logger.debug(`sending TCP stream`, { route: message.type, mid: message.mid })
+        this.logger.debug(`sending RPC response`, {
+          route: message.type,
+          mid: message.mid,
+          type: 'stream',
+          mode: 'tcp',
+        })
         this.emitStream(socket, this.constructStream(message.mid, data))
       },
     )
