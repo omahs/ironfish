@@ -120,6 +120,7 @@ export abstract class IronfishRpcClient extends IronfishClient {
 
     this.pending.set(messageId, pending)
 
+    this.logger.debug(`sending RCP message`, { route: route, mid: messageId })
     this.send(messageId, route, data)
 
     return response
@@ -136,6 +137,11 @@ export abstract class IronfishRpcClient extends IronfishClient {
       return
     }
 
+    this.logger.debug(`receiving RCP response`, {
+      route: pending.type,
+      mid: result.id,
+      type: 'stream',
+    })
     pending.stream.write(result.data)
   }
 
@@ -158,6 +164,13 @@ export abstract class IronfishRpcClient extends IronfishClient {
         result.data,
       )
 
+      this.logger.debug(`receiving RCP response`, {
+        route: pending.type,
+        mid: result.id,
+        type: 'stream',
+        error: true,
+      })
+
       if (errorBody) {
         pending.reject(
           new RequestError(
@@ -175,6 +188,11 @@ export abstract class IronfishRpcClient extends IronfishClient {
       return
     }
 
+    this.logger.debug(`receiving RCP response`, {
+      route: pending.type,
+      mid: result.id,
+      type: 'stream',
+    })
     pending.resolve(result.data)
   }
 }

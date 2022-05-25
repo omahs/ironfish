@@ -136,11 +136,13 @@ export class TcpAdapter implements IAdapter {
     }
 
     const message = result.result.data
+    this.logger.debug(`received TCP data`, { route: message.type, mid: message.mid })
 
     const reqId = uuid()
     const request = new Request(
       message.data,
       (status: number, data?: unknown) => {
+        this.logger.debug(`sending TCP response`, { route: message.type, mid: message.mid })
         this.emitResponse(
           socket,
           this.constructMessage(message.mid, status, data),
@@ -149,6 +151,7 @@ export class TcpAdapter implements IAdapter {
         )
       },
       (data: unknown) => {
+        this.logger.debug(`sending TCP stream`, { route: message.type, mid: message.mid })
         this.emitStream(socket, this.constructStream(message.mid, data))
       },
     )

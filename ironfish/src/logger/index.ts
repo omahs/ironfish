@@ -8,7 +8,7 @@ import { parseLogLevelConfig } from './logLevelParser'
 import { ConsoleReporter } from './reporters/console'
 export * from './reporters/intercept'
 
-type Loggable = string | number
+type Loggable = string | number | boolean
 export interface Logger extends Consola {
   info(message: string, args?: Record<string, Loggable>): void
   error(message: string, args?: Record<string, Loggable>): void
