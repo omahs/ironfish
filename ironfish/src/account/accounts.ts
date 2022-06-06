@@ -614,7 +614,7 @@ export class Accounts {
   getNotesFor(account: Account): {
     notes: {
       spender: boolean
-      amount: string
+      amount: number
       memo: string
       noteTxHash: string
     }[]
@@ -640,7 +640,7 @@ export class Accounts {
         if (decryptedNote && decryptedNote.value() !== BigInt(0)) {
           notes.push({
             spender,
-            amount: String(decryptedNote.value()),
+            amount: Number(decryptedNote.value()),
             memo: decryptedNote.memo().replace(/\x00/g, ''),
             noteTxHash: transaction.hash().toString('hex'),
           })
