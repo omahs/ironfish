@@ -10,7 +10,7 @@ import {
   VERSION_DATABASE_CHAIN,
 } from '@ironfish/sdk'
 import { CliUx, Flags } from '@oclif/core'
-import axios, { AxiosRequestConfig } from 'axios'
+import axios, { AxiosRequestConfig, ResponseType } from 'axios'
 import crypto from 'crypto'
 import fs from 'fs'
 import fsAsync from 'fs/promises'
@@ -299,14 +299,15 @@ export default class Download extends IronfishCommand {
 // type ChunkConfig = {
 //   range: { startByte: number; endByte: number }
 //   retry: number
-//   onError: () => void
+//   onError: (message: string) => void
 // }
 
-// async function downloadChunk(url: string, config: ChunkConfig) {
+// async function downloadChunk(url: string, config: ChunkConfig): Promise<string> {
 //   const { range, retry = 1, onError } = config
 //   const { startByte, endByte } = range
+//   const responseType: ResponseType = 'arraybuffer'
 //   const cfg = {
-//     responseType: 'arraybuffer',
+//     responseType: responseType,
 //     headers: { range: `bytes=${startByte}-${endByte}` },
 //   }
 //   const checksumCfg = {
@@ -318,9 +319,8 @@ export default class Download extends IronfishCommand {
 //   let filePath
 //   for (let i = 0; i < retry; ++i) {
 //     try {
-//       const result = await _downloadToFile(url, cfg)
-//       filePath = result.filePath
-//       if (checkSum === result.checksum) {
+//       const result = await _downloadToFile(url, cfg, 'fooooooooopath')
+//       if (checkSum.data. === result.checksum) {
 //         return filePath
 //       } else {
 //         try {
@@ -353,25 +353,18 @@ export default class Download extends IronfishCommand {
 //  * @param {Function} [config.onError]: Error handle function to handle error e at download number i
 //  * @returns {Promise<void>}
 //  */
-// async function download(src: string, config) {
-//   const chunkSizeInBytes = config.chunkSizeInBytes || 1024 * 1024 // 1 MB
-//   if (chunkSizeInBytes <= 0) {
-//     throw `Invalid chunk size: ${chunkSizeInBytes}`
-//   }
-
-//   console.log('Downloading chunks...')
+// async function download(src: string) {
+//   const chunkSizeInBytes = 200 * 1024 * 1024 // 200 MB
+//   let currentChunkSize = chunkSizeInBytes
 //   const filePaths = []
 //   let start = 0
-//   while (true) {
+//   while (currentChunkSize === chunkSizeInBytes) {
 //     const filePath = await downloadChunk(src, {
 //       ...config,
 //       range: { start, length: chunkSizeInBytes },
 //     })
 //     filePaths.push(filePath)
-//     const fileStat = fs.statSync(filePath)
-//     if (fileStat.size !== chunkSizeInBytes) {
-//       break
-//     }
+//     currentChunkSize = fs.statSync(filePath).size
 //     start += chunkSizeInBytes
 //   }
 
@@ -385,7 +378,7 @@ export default class Download extends IronfishCommand {
 //   return outputFile
 // }
 
-// function _appendFile(fsrc, fdest) {
+// function _appendFile(fsrc: string, fdest: string): Promise<void> {
 //   return new Promise((resolve, reject) => {
 //     const f1 = fs.createReadStream(fsrc)
 //     const f2 = fs.createWriteStream(fdest, { flags: 'a' })
@@ -395,25 +388,54 @@ export default class Download extends IronfishCommand {
 //   })
 // }
 
-// async function _downloadToFile(url: string, config: AxiosRequestConfig) {
+// async function _downloadToFile(
+//   url: string,
+//   config: AxiosRequestConfig,
+//   filePath: string,
+// ): Promise<{ filePath: string; checksum: string }> {
 //   config.responseType = 'stream'
 
-//   const filePath = tmp.tmpNameSync()
-//   const writer = fs.createWriteStream(filePath)
-//   const dataStream = (await axios.get(url, config)).data
-//   const state = StreamMD5.init()
-//   dataStream
-//     .pipe(
-//       though2(function (chunk, enc, callback) {
-//         StreamMD5.update(state, chunk)
-//         this.push(chunk)
-//         callback()
-//       }),
-//     )
-//     .pipe(writer)
+//   const writer = fs.createWriteStream(filePath, { flags: 'w' })
+//   const hasher = crypto.createHash('sha256')
 
-//   return new Promise((resolve, reject) => {
-//     writer.on('finish', () => resolve({ filePath, checksum: StreamMD5.finalize(state) }))
-//     writer.on('error', reject)
+//   const response: { data: IncomingMessage } = await axios.get(url, config)
+
+//   await new Promise<void>((resolve, reject) => {
+//     const onWriterError = (e: unknown) => {
+//       writer.removeListener('close', onWriterClose)
+//       writer.removeListener('error', onWriterError)
+//       reject(e)
+//     }
+
+//     const onWriterClose = () => {
+//       writer.removeListener('close', onWriterClose)
+//       writer.removeListener('error', onWriterError)
+//       resolve()
+//     }
+
+//     writer.on('error', onWriterError)
+//     writer.on('close', onWriterClose)
+//     response.data.on('end', () => {
+//       writer.close()
+//     })
+//     response.data.on('error', reject)
+//     response.data.on('data', (chunk: Buffer) => {
+//       writer.write(chunk)
+//       hasher.write(chunk)
+
+//       // downloaded += chunk.length
+//       // speed.add(chunk.length)
+//       // idleLastChunk = Date.now()
+
+//       // bar.update(downloaded, {
+//       //   downloadedSize: FileUtils.formatFileSize(downloaded),
+//       //   speed: FileUtils.formatFileSize(speed.rate1s),
+//       //   estimate: TimeUtils.renderEstimate(downloaded, manifest.file_size, speed.rate1m),
+//       // })
+//     })
 //   })
+//   return {
+//     filePath: filePath,
+//     checksum: hasher.digest().toString('hex'),
+//   }
 // }
