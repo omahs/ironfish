@@ -2,7 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { Assert } from '../assert'
-import { createNodeTest, useAccountFixture, useMinerBlockFixture } from '../testUtilities'
+import { NoteEncrypted } from '../primitives/noteEncrypted'
+import {
+  createNodeTest,
+  useAccountFixture,
+  useBlockWithTx,
+  useMinerBlockFixture,
+  useMinersTxFixture,
+} from '../testUtilities'
 import { AsyncUtils } from '../utils/async'
 
 describe('Accounts', () => {
@@ -128,5 +135,46 @@ describe('Accounts', () => {
 
     // record of expired transaction is preserved
     await expect(account.getTransaction(tx.hash())).resolves.toBeDefined()
+  })
+
+  it('should not update notes for a transaction that has already been synced', async () => {
+    const { node } = nodeTest
+
+    const account = await useAccountFixture(node.wallet, 'accountA')
+
+    const block1 = await useMinerBlockFixture(node.chain, undefined, account, node.wallet)
+    const tx1 = block1.transactions[0]
+
+    await expect(node.chain).toAddBlock(block1)
+    await node.wallet.updateHead()
+
+    const tx1Note: NoteEncrypted = [...tx1.notes()][0]
+
+    let decryptedNote = await account.getDecryptedNote(tx1Note.merkleHash())
+    Assert.isNotUndefined(decryptedNote)
+
+    expect(decryptedNote.spent).toBe(false)
+
+    const { block: block2 } = await useBlockWithTx(node, account, account, false)
+
+    await expect(node.chain).toAddBlock(block2)
+    await node.wallet.updateHead()
+
+    decryptedNote = await account.getDecryptedNote(tx1Note.merkleHash())
+    Assert.isNotUndefined(decryptedNote)
+
+    expect(decryptedNote.spent).toBe(true)
+
+    // sync transaction to wallet a second time after note has been spent
+    await node.wallet.syncTransaction(tx1, {
+      blockHash: block1.header.hash,
+      initialNoteIndex: block1.header.noteCommitment.size,
+      sequence: block1.header.sequence,
+    })
+
+    decryptedNote = await account.getDecryptedNote(tx1Note.merkleHash())
+    Assert.isNotUndefined(decryptedNote)
+
+    expect(decryptedNote.spent).toBe(true)
   })
 })
