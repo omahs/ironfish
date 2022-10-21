@@ -1,4 +1,4 @@
-#Running Test
+# Running Tests
 1. Download [cargo-flamegraph](https://github.com/flamegraph-rs/flamegraph). 
 ```bash
 cargo install flamegraph
