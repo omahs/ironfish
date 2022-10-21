@@ -4,6 +4,7 @@ members = [
     "ironfish-rust",
     "ironfish-rust-nodejs",
     "ironfish-zkp",
+    "rust-tests",
 ]
 
 [patch.crates-io]
