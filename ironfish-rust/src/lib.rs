@@ -7,6 +7,7 @@ use bls12_381::Bls12;
 mod serializing;
 
 pub mod errors;
+mod frost;
 pub mod keys;
 pub mod merkle_note;
 pub mod merkle_note_hash;
