@@ -572,6 +572,7 @@ fn commit(sk_i: &jubjub::Fr) -> (NoncePair, CommitmentPair) {
 ///   Each element in the list indicates the signer identifier j and their two commitment
 ///   Element values (hiding_nonce_commitment_j, binding_nonce_commitment_j).
 ///   This list MUST be sorted in ascending order by signer identifier.
+/// - randomizer_point, an Element in G, sent by the Coordinator
 ///
 /// Outputs: a Scalar value representing the signature share
 ///
@@ -583,7 +584,12 @@ fn sign(
     nonce_i: &NoncePair,
     msg: &[u8],
     commitment_list: &Vec<(u16, NoncePair, CommitmentPair)>,
+    randomizer_point: &ExtendedPoint,
 ) -> jubjub::Fr {
+    //   # Compute the randomized group public key
+    //   randomized_group_public_key = group_public_key + randomizer_point
+    let randomized_group_public_key = group_public_key + randomizer_point;
+
     //   # Compute the binding factor(s)
     //   binding_factor_list = compute_binding_factors(commitment_list, msg)
     //   binding_factor = binding_factor_for_participant(binding_factor_list, identifier)
@@ -608,8 +614,8 @@ fn sign(
             .unwrap();
 
     //   # Compute the per-message challenge
-    //   challenge = compute_challenge(group_commitment, group_public_key, msg)
-    let challenge = compute_challenge(&group_commitment, &group_public_key, msg);
+    //   challenge = compute_challenge(group_commitment, randomized_group_public_key, msg)
+    let challenge = compute_challenge(&group_commitment, &randomized_group_public_key, msg);
 
     //   # Compute the signature share
     //   (hiding_nonce, binding_nonce) = nonce_i
@@ -635,6 +641,7 @@ fn sign(
 /// - group_public_key, public key corresponding to the group signing key,
 ///   an Element in G.
 /// - msg, the message to be signed.
+/// - randomizer_point, an Element in G
 ///
 /// Outputs: True if the signature share is valid, and False otherwise.
 ///
@@ -648,7 +655,12 @@ fn verify_signature_share(
     commitment_list: &Vec<(u16, NoncePair, CommitmentPair)>,
     group_public_key: &ExtendedPoint,
     msg: &[u8],
+    randomizer_point: &ExtendedPoint,
 ) -> bool {
+    //   # Compute the randomized group public key
+    //   randomized_group_public_key = group_public_key + randomizer_point;
+    let randomized_group_public_key = group_public_key + randomizer_point;
+
     //   # Compute the binding factors
     //   binding_factor_list = compute_binding_factors(commitment_list, msg)
     //   binding_factor = binding_factor_for_participant(binding_factor_list, identifier)
@@ -666,8 +678,8 @@ fn verify_signature_share(
         comm_i.hiding_nonce_commitment + (comm_i.binding_nonce_commitment * binding_factor);
 
     //   # Compute the challenge
-    //   challenge = compute_challenge(group_commitment, group_public_key, msg)
-    let challenge = compute_challenge(&group_commitment, group_public_key, msg);
+    //   challenge = compute_challenge(group_commitment, randomized_group_public_key, msg)
+    let challenge = compute_challenge(&group_commitment, &randomized_group_public_key, msg);
 
     //   # Compute Lagrange coefficient
     //   participant_list = participants_from_commitment_list(commitment_list)
@@ -697,14 +709,24 @@ fn verify_signature_share(
 ///   an Element in G.
 /// - sig_shares, a set of signature shares z_i, Scalar values, for each signer,
 ///   of length NUM_SIGNERS, where MIN_SIGNERS <= NUM_SIGNERS <= MAX_SIGNERS.
+/// - group_public_key, public key corresponding to the group signing key, an Element in G.
+/// - challenge, the challenge returned by the compute challenge, a Scalar.
+/// - randomizer, the randomizer Scalar.
 ///
-/// Outputs: (R, z), a Schnorr signature consisting of an Element R and Scalar z.
+/// Outputs:
+/// - (R, z), a Schnorr signature consisting of an Element R and Scalar z.
+/// - randomized_group_public_key, the randomized_group_public_key
 ///
 /// def aggregate(group_commitment, sig_shares):
 fn aggregate(
     group_commitment: &ExtendedPoint,
     sig_shares: &[jubjub::Fr],
+    group_public_key: &ExtendedPoint,
+    challenge: &jubjub::Fr,
+    randomizer: &jubjub::Fr,
 ) -> (ExtendedPoint, jubjub::Fr) {
+    // TODO: is G base_point?
+    //   randomized_group_public_key = group_public_key + G * randomizer;
     //   z = 0
     let mut z = jubjub::Fr::zero();
     //   for z_i in sig_shares:
@@ -715,7 +737,7 @@ fn aggregate(
 
     //   return (group_commitment, z)
     // TODO: this function just shouldnt take the group_commitment
-    (group_commitment.clone(), z)
+    (group_commitment.clone(), (z + randomizer * challenge))
 }
 
 /// inputs:
@@ -827,21 +849,38 @@ fn vss_commit(coeffs: &[jubjub::Fr]) -> Vec<ExtendedPoint> {
     vss_commitment
 }
 
+/// Inputs:
+/// - None
+///
+/// Outputs:
+/// - randomizer, a Scalar
+/// def randomizer_generate():
+fn generate_randomizer() -> jubjub::Fr {
+    let mut buf = [0; 64];
+    thread_rng().fill(&mut buf);
+
+    Hasher::h3().update(&buf).to_scalar()
+}
+
 #[cfg(test)]
 mod test {
     use std::io::Write;
 
     use ff::Field;
     use group::GroupEncoding;
-    use ironfish_zkp::redjubjub::Signature;
+    use ironfish_zkp::{
+        constants::SPENDING_KEY_GENERATOR,
+        redjubjub::{PublicKey, Signature},
+    };
     use jubjub::ExtendedPoint;
     use rand::thread_rng;
 
     use crate::{
         errors::IronfishError,
         frost::{
-            aggregate, commit, compute_binding_factors, compute_group_commitment, sign,
-            verify_signature_share, CommitmentPair, NoncePair,
+            aggregate, commit, compute_binding_factors, compute_challenge,
+            compute_group_commitment, generate_randomizer, sign, verify_signature_share,
+            CommitmentPair, NoncePair,
         },
     };
 
@@ -887,6 +926,10 @@ mod test {
 
         // Round 2 - signature share generation
 
+        let randomizer = generate_randomizer();
+        let randomizer_point = base_point() * randomizer;
+        let randomized_group_public_key = pk + randomizer_point;
+
         let mut sig_shares: Vec<jubjub::Fr> = Vec::new();
         for i in 1..=THRESHOLD {
             let sk_i = signer_private_keys
@@ -900,7 +943,15 @@ mod test {
                 .unwrap()
                 .1;
 
-            let sig_share = sign(i, sk_i, pk, nonce_i, msg, &signer_commitments);
+            let sig_share = sign(
+                i,
+                sk_i,
+                pk,
+                nonce_i,
+                msg,
+                &signer_commitments,
+                &randomizer_point,
+            );
             sig_shares.push(sig_share);
         }
 
@@ -918,8 +969,17 @@ mod test {
                 .unwrap()
                 .2;
             let sig_share_i = &sig_shares[(i - 1) as usize];
-            let is_valid =
-                verify_signature_share(i, pk_i, comm_i, sig_share_i, &signer_commitments, &pk, msg);
+
+            let is_valid = verify_signature_share(
+                i,
+                pk_i,
+                comm_i,
+                sig_share_i,
+                &signer_commitments,
+                &pk,
+                msg,
+                &randomizer_point,
+            );
 
             if !is_valid {
                 panic!("Participant {i} share was invalid.");
@@ -928,13 +988,18 @@ mod test {
 
         let binding_factor_list = &compute_binding_factors(&signer_commitments, msg);
         let group_commitment = &compute_group_commitment(&signer_commitments, binding_factor_list);
-        let signature_contents = aggregate(group_commitment, &sig_shares);
+        let challenge = compute_challenge(group_commitment, &randomized_group_public_key, msg);
+        let signature_contents =
+            aggregate(group_commitment, &sig_shares, &pk, &challenge, &randomizer);
 
         let mut signature_bytes = [0u8; 64];
-        signature_bytes[0..32].copy_from_slice(&signature_contents.0.to_bytes());
+        signature_bytes[..32].copy_from_slice(&signature_contents.0.to_bytes());
         signature_bytes[32..].copy_from_slice(&signature_contents.1.to_bytes());
 
-        let signature = Signature::read(&mut signature_bytes.as_ref());
+        let signature = Signature::read(&mut signature_bytes.as_ref()).unwrap();
+
+        let pub_key = PublicKey(randomized_group_public_key);
+        pub_key.verify(b"foobar", &signature, SPENDING_KEY_GENERATOR);
 
         // Docs say the format should be:
         // Still need to figure out what Ne and Ns should be
