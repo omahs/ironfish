@@ -5,6 +5,7 @@
 import type { Peer } from './peer'
 import { createRootLogger, Logger } from '../../logger'
 import { ArrayUtils, SetTimeoutToken } from '../../utils'
+import { DisconnectingReason } from '../messages/disconnecting'
 import { PeerManager } from './peerManager'
 
 /**
@@ -114,6 +115,32 @@ export class PeerConnectionManager {
       } else if (peer) {
         this.peerManager.tryDisposePeer(peer)
       }
+    }
+
+    const connectedPeers = this.peerManager.getConnectedPeers()
+    const peerThreshold = this.peerManager.targetPeers * 0.8 // 80%
+
+    const unsyncedPeers = connectedPeers.filter(
+      (peer) => peer.sequence == null || peer.sequence < 200_000,
+    )
+    const unsyncedPeerThreshold = this.peerManager.targetPeers * 0.1 // 10%
+
+    // If over 80% of max peers and over 10% of unsynced peers
+    if (
+      connectedPeers.length >= peerThreshold &&
+      unsyncedPeers.length >= unsyncedPeerThreshold
+    ) {
+      const peerToDrop = unsyncedPeers[0]
+      console.log(
+        `Peer ${peerToDrop.getIdentityOrThrow()} has been targeted for deletion. Sequence: ${
+          peerToDrop.sequence || 'NULL'
+        }`,
+      )
+      this.peerManager.disconnect(
+        peerToDrop,
+        DisconnectingReason.Congested,
+        this.peerManager.getCongestedDisconnectUntilTimestamp(),
+      )
     }
 
     this.eventLoopTimer = setTimeout(() => this.eventLoop(), EVENT_LOOP_MS)
