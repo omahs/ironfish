@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { BoxKeyPair } from '@ironfish/rust-nodejs'
+import bufio from 'bufio'
+import fsAsync from 'fs/promises'
 import os from 'os'
 import { v4 as uuid } from 'uuid'
 import { Blockchain } from './blockchain'
@@ -22,6 +24,7 @@ import { Migrator } from './migrations'
 import { MiningManager } from './mining'
 import { PeerNetwork, PrivateIdentity, privateIdentityToIdentity } from './network'
 import { IsomorphicWebSocketConstructor } from './network/types'
+import { readBlock } from './network/utils/serializers'
 import { Package } from './package'
 import { Platform } from './platform'
 import { RpcServer } from './rpc/server'
@@ -412,4 +415,29 @@ export class IronfishNode {
       }
     }
   }
+}
+
+export async function addBlock(node: IronfishNode, path: string): Promise<void> {
+  const payload = await fsAsync.readFile(path, 'utf-8')
+
+  const payloadBuffer = Buffer.from(payload, 'hex')
+
+  const reader = bufio.read(payloadBuffer)
+
+  const block = readBlock(reader)
+
+  for (const transaction of block.transactions) {
+    for (const spend of transaction.spends()) {
+      if (await node.chain.nullifiers.contains(spend.nullifier)) {
+        // console.log(`Culprit: ${transaction.unsignedHash().toString('hex')}`)
+        // console.log(spend.nullifier.toString('hex'))
+        console.log(block.header.sequence)
+        break
+      }
+    }
+  }
+
+  const result = await node.chain.addBlock(block)
+
+  console.log(result)
 }
