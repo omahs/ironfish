@@ -12,6 +12,7 @@ import { createRootLogger, Logger } from '../logger'
 import { MemPool } from '../memPool'
 import { NoteWitness } from '../merkletree/witness'
 import { Mutex } from '../mutex'
+import { BlockHeader } from '../primitives'
 import { Note } from '../primitives/note'
 import { Transaction } from '../primitives/transaction'
 import { IDatabaseTransaction } from '../storage/database/transaction'
@@ -104,20 +105,9 @@ export class Wallet {
     this.chainProcessor.onAdd.on(async (header) => {
       this.logger.debug(`AccountHead ADD: ${Number(header.sequence) - 1} => ${header.sequence}`)
 
-      for await (const {
-        transaction,
-        blockHash,
-        sequence,
-        initialNoteIndex,
-      } of this.chain.iterateBlockTransactions(header)) {
-        await this.syncTransaction(transaction, {
-          blockHash,
-          initialNoteIndex,
-          sequence,
-        })
-      }
+      const accounts = this.listAccounts().filter((account) => this.isAccountUpToDate(account))
 
-      await this.updateHeadHashes(header.hash)
+      await this.addBlock(header, accounts)
     })
 
     this.chainProcessor.onRemove.on(async (header) => {
@@ -394,6 +384,33 @@ export class Wallet {
     return decryptedNotes
   }
 
+  async addBlock(header: BlockHeader, accounts: Account[]): Promise<void> {
+    for (const account of accounts) {
+      await this.walletDb.db.transaction(async (tx) => {
+        for await (const {
+          transaction,
+          initialNoteIndex,
+        } of this.chain.iterateBlockTransactions(header)) {
+          const decryptedNotesByAccountId = await this.decryptNotes(
+            transaction,
+            initialNoteIndex,
+            [account],
+          )
+
+          const decryptedNotes = decryptedNotesByAccountId.get(account.id)
+
+          if (!decryptedNotes) {
+            continue
+          }
+
+          await account.addBlockTransaction(header, transaction, decryptedNotes, tx)
+        }
+
+        await this.updateHeadHash(account, header.hash, tx)
+      })
+    }
+  }
+
   async addPendingTransaction(
     transaction: Transaction,
     submittedSequence: number | null,
@@ -538,34 +555,9 @@ export class Wallet {
       undefined,
       false,
     )) {
-      for await (const {
-        blockHash,
-        transaction,
-        initialNoteIndex,
-        sequence,
-      } of this.chain.iterateBlockTransactions(blockHeader)) {
-        if (scan.isAborted) {
-          scan.signalComplete()
-          this.scan = null
-          return
-        }
+      await this.addBlock(blockHeader, accounts)
 
-        await this.syncTransaction(
-          transaction,
-          {
-            blockHash,
-            initialNoteIndex,
-            sequence,
-          },
-          accounts,
-        )
-
-        scan.signal(sequence)
-      }
-
-      for (const account of accounts) {
-        await this.updateHeadHash(account, blockHeader.hash)
-      }
+      scan.signal(blockHeader.sequence)
 
       const newRemainingAccounts = []
 

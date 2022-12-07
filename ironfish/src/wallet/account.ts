@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import MurmurHash3 from 'imurmurhash'
 import { Assert } from '../assert'
-import { Transaction } from '../primitives'
+import { BlockHeader, Transaction } from '../primitives'
 import { GENESIS_BLOCK_SEQUENCE } from '../primitives/block'
 import { Note } from '../primitives/note'
 import { DatabaseKeyRange, IDatabaseTransaction } from '../storage'
@@ -179,6 +179,70 @@ export class Account {
     })
   }
 
+  async addBlockTransaction(
+    header: BlockHeader,
+    transaction: Transaction,
+    decryptedNotes: Array<DecryptedNote>,
+    tx?: IDatabaseTransaction,
+  ): Promise<void> {
+    await this.walletDb.db.withTransaction(tx, async (tx) => {
+      let balanceDelta = 0n
+      for (const decryptedNote of decryptedNotes) {
+        if (decryptedNote.forSpender) {
+          continue
+        }
+
+        const note = new Note(decryptedNote.serializedNote)
+
+        // TODO: the balance will already reflect notes from pending transactions
+        // this check won't be necessary once we only update balances for on-chain transactions
+        const pendingNote = await this.getDecryptedNote(decryptedNote.hash, tx)
+        if (!pendingNote) {
+          balanceDelta += note.value()
+        }
+
+        await this.walletDb.addDecryptedNote(
+          this,
+          decryptedNote.hash,
+          {
+            accountId: this.id,
+            note,
+            spent: false,
+            transactionHash: transaction.hash(),
+            nullifier: decryptedNote.nullifier,
+            index: decryptedNote.index,
+          },
+          header.sequence,
+          tx,
+        )
+      }
+
+      for (const spend of transaction.spends()) {
+        const spentNoteHash = await this.getNoteHash(spend.nullifier, tx)
+        if (!spentNoteHash) {
+          continue
+        }
+
+        balanceDelta -= await this.walletDb.spendDecryptedNote(this, spentNoteHash, tx)
+      }
+
+      await this.walletDb.addTransaction(
+        this,
+        transaction.hash(),
+        {
+          transaction,
+          blockHash: header.hash,
+          sequence: header.sequence,
+          submittedSequence: null,
+        },
+        tx,
+      )
+
+      const unconfirmedBalance = await this.getUnconfirmedBalance(tx)
+      await this.saveUnconfirmedBalance(unconfirmedBalance + balanceDelta, tx)
+    })
+  }
+
   async addPendingTransaction(
     transaction: Transaction,
     decryptedNotes: Array<DecryptedNote>,
@@ -192,10 +256,9 @@ export class Account {
           continue
         }
 
-        await this.walletDb.nonChainNoteHashes.put([this.prefix, decryptedNote.hash], null, tx)
-
         const note = new Note(decryptedNote.serializedNote)
-        await this.walletDb.saveDecryptedNote(
+
+        await this.walletDb.addDecryptedNote(
           this,
           decryptedNote.hash,
           {
@@ -206,6 +269,7 @@ export class Account {
             nullifier: null,
             index: null,
           },
+          null,
           tx,
         )
 
@@ -213,37 +277,15 @@ export class Account {
       }
 
       for (const spend of transaction.spends()) {
-        const spentNoteHash = await this.getNoteHash(spend.nullifier)
+        const spentNoteHash = await this.getNoteHash(spend.nullifier, tx)
         if (!spentNoteHash) {
           continue
         }
 
-        const spentNote = await this.getDecryptedNote(spentNoteHash, tx)
-
-        Assert.isNotUndefined(spentNote)
-
-        await this.walletDb.saveDecryptedNote(
-          this,
-          spentNoteHash,
-          {
-            ...spentNote,
-            spent: true,
-          },
-          tx,
-        )
-
-        if (!spentNote.spent) {
-          balanceDelta -= spentNote.note.value()
-        }
+        balanceDelta -= await this.walletDb.spendDecryptedNote(this, spentNoteHash, tx)
       }
 
-      await this.walletDb.pendingTransactionHashes.put(
-        [this.prefix, [transaction.expirationSequence(), transaction.hash()]],
-        null,
-        tx,
-      )
-
-      await this.walletDb.saveTransaction(
+      await this.walletDb.addTransaction(
         this,
         transaction.hash(),
         {
