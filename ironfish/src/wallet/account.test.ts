@@ -200,7 +200,7 @@ describe('Accounts', () => {
 
       const accountA = await useAccountFixture(node.wallet, 'accountA')
 
-      const addPendingSpy = jest.spyOn(accountA, 'addPendingTransaction')
+      const addTransactionSpy = jest.spyOn(accountA, 'addTransaction')
 
       const block1 = await useMinerBlockFixture(node.chain, undefined, accountA, node.wallet)
       await node.chain.addBlock(block1)
@@ -208,7 +208,7 @@ describe('Accounts', () => {
 
       const transaction = await useTxFixture(node.wallet, accountA, accountA)
 
-      expect(addPendingSpy).toHaveBeenCalled()
+      expect(addTransactionSpy).toHaveBeenCalled()
 
       // transaction from A -> A, so all notes belong to A
       for (const note of transaction.notes()) {
@@ -230,7 +230,7 @@ describe('Accounts', () => {
 
       const accountA = await useAccountFixture(node.wallet, 'accountA')
 
-      const addPendingSpy = jest.spyOn(accountA, 'addPendingTransaction')
+      const addTransactionSpy = jest.spyOn(accountA, 'addTransaction')
 
       const block1 = await useMinerBlockFixture(node.chain, undefined, accountA, node.wallet)
       await node.chain.addBlock(block1)
@@ -238,7 +238,7 @@ describe('Accounts', () => {
 
       const transaction = await useTxFixture(node.wallet, accountA, accountA)
 
-      expect(addPendingSpy).toHaveBeenCalled()
+      expect(addTransactionSpy).toHaveBeenCalled()
 
       for (const spend of transaction.spends()) {
         const spentNoteHash = await accountA.getNoteHash(spend.nullifier)
@@ -258,7 +258,7 @@ describe('Accounts', () => {
 
       const accountA = await useAccountFixture(node.wallet, 'accountA')
 
-      const addPendingSpy = jest.spyOn(accountA, 'addPendingTransaction')
+      const addTransactionSpy = jest.spyOn(accountA, 'addTransaction')
 
       const block1 = await useMinerBlockFixture(node.chain, undefined, accountA, node.wallet)
       await node.chain.addBlock(block1)
@@ -266,7 +266,7 @@ describe('Accounts', () => {
 
       const transaction = await useTxFixture(node.wallet, accountA, accountA)
 
-      expect(addPendingSpy).toHaveBeenCalled()
+      expect(addTransactionSpy).toHaveBeenCalled()
 
       const pendingHashEntry = await accountA['walletDb'].pendingTransactionHashes.get([
         accountA.prefix,

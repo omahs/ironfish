@@ -403,7 +403,7 @@ export class Wallet {
             continue
           }
 
-          await account.addBlockTransaction(header, transaction, decryptedNotes, tx)
+          await account.addTransaction(transaction, decryptedNotes, header, null, tx)
         }
 
         await this.updateHeadHash(account, header.hash, tx)
@@ -436,7 +436,7 @@ export class Wallet {
         continue
       }
 
-      await account.addPendingTransaction(transaction, decryptedNotes, submittedSequence)
+      await account.addTransaction(transaction, decryptedNotes, null, submittedSequence)
     }
   }
 

@@ -1036,8 +1036,8 @@ describe('Accounts', () => {
       await expect(node.chain).toAddBlock(blockA1)
       await node.wallet.updateHead()
 
-      const addSpyA = jest.spyOn(accountA, 'addPendingTransaction')
-      const addSpyB = jest.spyOn(accountB, 'addPendingTransaction')
+      const addSpyA = jest.spyOn(accountA, 'addTransaction')
+      const addSpyB = jest.spyOn(accountB, 'addTransaction')
 
       await useTxFixture(node.wallet, accountA, accountA)
 

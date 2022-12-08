@@ -179,10 +179,11 @@ export class Account {
     })
   }
 
-  async addBlockTransaction(
-    header: BlockHeader,
+  async addTransaction(
     transaction: Transaction,
     decryptedNotes: Array<DecryptedNote>,
+    blockHeader: BlockHeader | null,
+    submittedSequence: number | null,
     tx?: IDatabaseTransaction,
   ): Promise<void> {
     await this.walletDb.db.withTransaction(tx, async (tx) => {
@@ -212,7 +213,7 @@ export class Account {
             nullifier: decryptedNote.nullifier,
             index: decryptedNote.index,
           },
-          header.sequence,
+          blockHeader?.sequence ?? null,
           tx,
         )
       }
@@ -231,68 +232,9 @@ export class Account {
         transaction.hash(),
         {
           transaction,
-          blockHash: header.hash,
-          sequence: header.sequence,
-          submittedSequence: null,
-        },
-        tx,
-      )
-
-      const unconfirmedBalance = await this.getUnconfirmedBalance(tx)
-      await this.saveUnconfirmedBalance(unconfirmedBalance + balanceDelta, tx)
-    })
-  }
-
-  async addPendingTransaction(
-    transaction: Transaction,
-    decryptedNotes: Array<DecryptedNote>,
-    submittedSequence: number | null,
-    tx?: IDatabaseTransaction,
-  ): Promise<void> {
-    await this.walletDb.db.withTransaction(tx, async (tx) => {
-      let balanceDelta = 0n
-      for (const decryptedNote of decryptedNotes) {
-        if (decryptedNote.forSpender) {
-          continue
-        }
-
-        const note = new Note(decryptedNote.serializedNote)
-
-        await this.walletDb.addDecryptedNote(
-          this,
-          decryptedNote.hash,
-          {
-            accountId: this.id,
-            note,
-            spent: false,
-            transactionHash: transaction.hash(),
-            nullifier: null,
-            index: null,
-          },
-          null,
-          tx,
-        )
-
-        balanceDelta += note.value()
-      }
-
-      for (const spend of transaction.spends()) {
-        const spentNoteHash = await this.getNoteHash(spend.nullifier, tx)
-        if (!spentNoteHash) {
-          continue
-        }
-
-        balanceDelta -= await this.walletDb.spendDecryptedNote(this, spentNoteHash, tx)
-      }
-
-      await this.walletDb.addTransaction(
-        this,
-        transaction.hash(),
-        {
-          transaction,
-          blockHash: null,
-          sequence: null,
-          submittedSequence,
+          blockHash: blockHeader?.hash ?? null,
+          sequence: blockHeader?.sequence ?? null,
+          submittedSequence: submittedSequence,
         },
         tx,
       )
