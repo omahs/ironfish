@@ -54,17 +54,17 @@ describe('Accounts', () => {
     await nodeA.wallet.updateHead()
     await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
       confirmed: BigInt(2000000000),
-      pending: BigInt(2000000000),
+      unconfirmed: BigInt(2000000000),
     })
 
     // This transaction will be invalid after the reorg
     const invalidTx = await useTxFixture(nodeA.wallet, accountA, accountB)
     expect(broadcastSpy).toHaveBeenCalledTimes(0)
 
-    await nodeA.wallet.updateHead()
+    // balance does not change for pending transactions
     await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
-      confirmed: BigInt(0),
-      pending: BigInt(1999999999),
+      confirmed: BigInt(2000000000),
+      unconfirmed: BigInt(2000000000),
     })
 
     await expect(nodeA.chain).toAddBlock(blockB1)
@@ -87,7 +87,7 @@ describe('Accounts', () => {
     await nodeA.wallet.updateHead()
     await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
       confirmed: BigInt(0),
-      pending: BigInt(3999999999),
+      unconfirmed: BigInt(0),
     })
 
     // Check that it was last broadcast at its added height
@@ -180,14 +180,13 @@ describe('Accounts', () => {
     await expect(nodeA.chain).toAddBlock(blockA2)
     await nodeA.wallet.updateHead()
 
+    await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
+      confirmed: BigInt(1999999998),
+      unconfirmed: BigInt(1999999998),
+    })
+
     // Create a transaction that spends notes from the invalid transaction
     const forkSpendTx = await useTxFixture(nodeA.wallet, accountA, accountB)
-
-    await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
-      confirmed: BigInt(0),
-      unconfirmed: BigInt(0),
-      pending: BigInt(1999999997), // change from transactions
-    })
 
     // re-org
     await expect(nodeA.chain).toAddBlock(blockB1)
@@ -199,7 +198,6 @@ describe('Accounts', () => {
     await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
       confirmed: BigInt(0),
       unconfirmed: BigInt(0),
-      pending: BigInt(5999999995), // minersFee from blockA1 + change from transactions
     })
 
     // expire original transaction from fork
@@ -208,7 +206,6 @@ describe('Accounts', () => {
     await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
       confirmed: BigInt(0),
       unconfirmed: BigInt(0),
-      pending: BigInt(3999999997), // minersFee from blockA1 + change from invalid fork spend
     })
 
     // expire transaction that spends from fork
@@ -217,7 +214,6 @@ describe('Accounts', () => {
     await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
       confirmed: BigInt(0),
       unconfirmed: BigInt(0),
-      pending: BigInt(2000000000), // minersFee from blockA1
     })
   })
 
@@ -410,12 +406,11 @@ describe('Accounts', () => {
       expect(nodeB.chain.head.hash.equals(blockA5.header.hash)).toBe(true)
 
       expect(await nodeA.wallet.getBalance(accountA)).toMatchObject({
-        confirmed: BigInt(6000000000),
-        pending: BigInt(10000000000),
+        confirmed: BigInt(6000000000), // 3 confirmed blocks
+        unconfirmed: BigInt(10000000000), // 3 confirmed + 2 unconfirmed blocks
       })
       expect(await nodeB.wallet.getBalance(accountB)).toMatchObject({
         confirmed: BigInt(0),
-        pending: BigInt(0),
       })
     })
   })
@@ -931,9 +926,8 @@ describe('Accounts', () => {
       const tx = await useTxFixture(nodeA.wallet, accountA, accountB, undefined, undefined, 3)
 
       await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
-        confirmed: BigInt(0),
-        unconfirmed: BigInt(0),
-        pending: BigInt(1999999999), // change from transaction
+        confirmed: BigInt(2000000000),
+        unconfirmed: BigInt(2000000000),
       })
 
       // Mine a new block at sequence 3, expiring transaction
@@ -951,7 +945,7 @@ describe('Accounts', () => {
       }
 
       await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
-        pending: BigInt(2000000000), // minersFee from blockA1
+        unconfirmed: BigInt(2000000000), // minersFee from blockA1
       })
 
       // re-sync expired transaction
@@ -964,7 +958,7 @@ describe('Accounts', () => {
 
       // balance should not have changed
       await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
-        pending: BigInt(2000000000), // minersFee from blockA1
+        unconfirmed: BigInt(2000000000), // minersFee from blockA1
       })
     })
 
@@ -984,9 +978,8 @@ describe('Accounts', () => {
       const tx = await useTxFixture(nodeA.wallet, accountA, accountB, undefined, undefined, 4)
 
       await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
-        confirmed: BigInt(0),
-        unconfirmed: BigInt(0),
-        pending: BigInt(1999999999), // change from transaction
+        confirmed: BigInt(2000000000),
+        unconfirmed: BigInt(2000000000),
       })
 
       // Mine a new block at sequence 3, expiring transaction
@@ -1004,7 +997,8 @@ describe('Accounts', () => {
       }
 
       await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
-        pending: BigInt(2000000000), // minersFee from blockA1
+        confirmed: BigInt(2000000000),
+        unconfirmed: BigInt(2000000000), // minersFee from blockA1
       })
 
       // mine the transaction on a fork
@@ -1022,7 +1016,7 @@ describe('Accounts', () => {
 
       // balance should include the transaction
       await expect(nodeA.wallet.getBalance(accountA)).resolves.toMatchObject({
-        pending: BigInt(1999999999), // change from transaction
+        unconfirmed: BigInt(1999999999), // change from transaction
       })
     })
   })

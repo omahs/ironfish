@@ -115,7 +115,7 @@ describe('Accounts', () => {
 
     await expect(account.getBalance(1, 1)).resolves.toMatchObject({
       confirmed: BigInt(0),
-      pending: BigInt(2000000000),
+      unconfirmed: BigInt(0),
     })
 
     await account.expireTransaction(tx)

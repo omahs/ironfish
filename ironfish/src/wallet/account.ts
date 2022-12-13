@@ -127,20 +127,6 @@ export class Account {
     await this.walletDb.db.withTransaction(tx, async (tx) => {
       const existingNote = await this.getDecryptedNote(noteHash, tx)
 
-      if (!existingNote || existingNote.spent !== note.spent) {
-        const value = note.note.value()
-        const currentUnconfirmedBalance = await this.walletDb.getUnconfirmedBalance(this, tx)
-
-        // TODO(mgeist,rohanjadvani): Replace with asset identifier
-        if (note.note.assetIdentifier().equals(Asset.nativeIdentifier())) {
-          if (note.spent) {
-            await this.saveUnconfirmedBalance(currentUnconfirmedBalance - value, tx)
-          } else {
-            await this.saveUnconfirmedBalance(currentUnconfirmedBalance + value, tx)
-          }
-        }
-      }
-
       if (existingNote && existingNote.nullifier !== null && note.nullifier == null) {
         await this.walletDb.deleteNullifier(this, existingNote.nullifier, tx)
       }
@@ -209,11 +195,7 @@ export class Account {
         }
 
         const note = new Note(decryptedNote.serializedNote)
-
-        // TODO: the balance will already reflect notes from pending transactions
-        // this check won't be necessary once we only update balances for on-chain transactions
-        const pendingNote = await this.getDecryptedNote(decryptedNote.hash, tx)
-        if (!pendingNote) {
+        if (note.assetIdentifier().equals(Asset.nativeIdentifier())) {
           balanceDelta += note.value()
         }
 
@@ -269,7 +251,6 @@ export class Account {
     tx?: IDatabaseTransaction,
   ): Promise<void> {
     await this.walletDb.db.withTransaction(tx, async (tx) => {
-      let balanceDelta = 0n
       for (const decryptedNote of decryptedNotes) {
         if (decryptedNote.forSpender) {
           continue
@@ -292,8 +273,6 @@ export class Account {
           },
           tx,
         )
-
-        balanceDelta += note.value()
       }
 
       for (const spend of transaction.spends()) {
@@ -302,7 +281,7 @@ export class Account {
           continue
         }
 
-        balanceDelta -= await this.spendDecryptedNote(spentNoteHash, tx)
+        await this.spendDecryptedNote(spentNoteHash, tx)
       }
 
       await this.walletDb.addTransaction(
@@ -316,9 +295,6 @@ export class Account {
         },
         tx,
       )
-
-      const unconfirmedBalance = await this.getUnconfirmedBalance(tx)
-      await this.saveUnconfirmedBalance(unconfirmedBalance + balanceDelta, tx)
     })
   }
 
@@ -340,6 +316,8 @@ export class Account {
     })
   }
 
+  // TODO(hughy): this method is now only called when blocks are removed from the chain
+  // this method now updates the balance when blocks are removed but will be removed once disconnect is implemented
   private async bulkUpdateDecryptedNotes(
     transactionHash: Buffer,
     decryptedNotes: Array<DecryptedNote>,
@@ -348,6 +326,7 @@ export class Account {
     tx?: IDatabaseTransaction,
   ) {
     await this.walletDb.db.withTransaction(tx, async (tx) => {
+      let balanceDelta = 0n
       for (const decryptedNote of decryptedNotes) {
         if (decryptedNote.forSpender) {
           continue
@@ -362,13 +341,18 @@ export class Account {
           )
         }
 
+        const note = new Note(decryptedNote.serializedNote)
+        if (note.assetIdentifier().equals(Asset.nativeIdentifier())) {
+          balanceDelta -= note.value()
+        }
+
         await this.updateDecryptedNote(
           decryptedNote.hash,
           {
             accountId: this.id,
             nullifier: decryptedNote.nullifier,
             index: decryptedNote.index,
-            note: new Note(decryptedNote.serializedNote),
+            note,
             spent: false,
             transactionHash,
             blockHash,
@@ -377,14 +361,20 @@ export class Account {
           tx,
         )
       }
+
+      const unconfirmedBalance = await this.getUnconfirmedBalance(tx)
+      await this.saveUnconfirmedBalance(unconfirmedBalance + balanceDelta, tx)
     })
   }
 
+  // TODO(hughy): this method is now only called when a block is disconnected
+  // this method now updates the balance when blocks are removed but will be removed once disconnect is implemented
   private async processTransactionSpends(
     transaction: Transaction,
     isRemovingTransaction: boolean,
     tx?: IDatabaseTransaction,
   ): Promise<void> {
+    let balanceDelta = 0n
     for (const spend of transaction.spends()) {
       const noteHash = await this.getNoteHash(spend.nullifier, tx)
 
@@ -403,8 +393,15 @@ export class Account {
           },
           tx,
         )
+
+        if (decryptedNote.note.assetIdentifier().equals(Asset.nativeIdentifier())) {
+          balanceDelta -= decryptedNote.note.value()
+        }
       }
     }
+
+    const unconfirmedBalance = await this.getUnconfirmedBalance(tx)
+    await this.saveUnconfirmedBalance(unconfirmedBalance + balanceDelta, tx)
   }
 
   private async deleteDecryptedNote(
@@ -416,16 +413,6 @@ export class Account {
       const existingNote = await this.getDecryptedNote(noteHash, tx)
 
       if (existingNote) {
-        const note = existingNote.note
-        const value = note.value()
-        const currentUnconfirmedBalance = await this.walletDb.getUnconfirmedBalance(this, tx)
-
-        if (existingNote.spent) {
-          await this.saveUnconfirmedBalance(currentUnconfirmedBalance + value, tx)
-        } else {
-          await this.saveUnconfirmedBalance(currentUnconfirmedBalance - value, tx)
-        }
-
         await this.walletDb.deleteDecryptedNote(this, noteHash, tx)
       }
 
@@ -531,23 +518,9 @@ export class Account {
     pending: bigint
     pendingCount: number
   }> {
-    let pendingCount = 0
     let unconfirmedCount = 0
 
-    const pending = await this.getUnconfirmedBalance(tx)
-
-    let unconfirmed = pending
-    for await (const note of this.walletDb.loadNotesNotOnChain(this, tx)) {
-      // TODO(mgeist,rohanjadvani): Check asset identifier
-      if (!note.note.assetIdentifier().equals(Asset.nativeIdentifier())) {
-        continue
-      }
-
-      if (!note.spent) {
-        pendingCount++
-        unconfirmed -= note.note.value()
-      }
-    }
+    const unconfirmed = await this.getUnconfirmedBalance(tx)
 
     let confirmed = unconfirmed
     if (minimumBlockConfirmations > 0) {
@@ -580,8 +553,8 @@ export class Account {
       unconfirmed,
       unconfirmedCount,
       confirmed,
-      pending,
-      pendingCount,
+      pending: 0n,
+      pendingCount: 0,
     }
   }
 
@@ -635,13 +608,11 @@ export class Account {
       tx,
     )
 
-    // TODO: balance may already reflect notes spent in pending transactions
-    // this check will no longer be necessary if we only update balances for on-chain transactions
-    if (noteToSpend.spent) {
-      return 0n
+    if (noteToSpend.note.assetIdentifier().equals(Asset.nativeIdentifier())) {
+      return noteToSpend.note.value()
     }
 
-    return noteToSpend.note.value()
+    return 0n
   }
 }
 

@@ -87,7 +87,7 @@ describe('Create genesis block', () => {
     // any notes made in the process
     await expect(node.wallet.getBalance(account)).resolves.toMatchObject({
       confirmed: BigInt(0),
-      pending: BigInt(0),
+      unconfirmed: BigInt(0),
     })
 
     // Add the block to the chain
@@ -99,7 +99,7 @@ describe('Create genesis block', () => {
     // Check that the balance is what's expected
     await expect(node.wallet.getBalance(account)).resolves.toMatchObject({
       confirmed: amountBigint,
-      pending: amountBigint,
+      unconfirmed: amountBigint,
     })
 
     // Ensure we can construct blocks after that block
@@ -134,8 +134,8 @@ describe('Create genesis block', () => {
     await newNode.wallet.scanTransactions()
 
     await expect(newNode.wallet.getBalance(accountNewNode)).resolves.toMatchObject({
-      confirmed: amountBigint,
-      pending: amountBigint,
+      confirmed: amountBigint * 2n,
+      unconfirmed: amountBigint * 2n,
     })
 
     // Ensure we can construct blocks after that block
