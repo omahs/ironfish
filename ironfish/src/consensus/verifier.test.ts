@@ -19,7 +19,6 @@ import { Target } from '../primitives/target'
 import { SerializedTransaction } from '../primitives/transaction'
 import {
   createNodeTest,
-  useBlockFixture,
   useBlockWithTx,
   useFixture,
   useMinerBlockFixture,
