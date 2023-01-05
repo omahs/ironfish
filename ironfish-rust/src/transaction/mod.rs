@@ -135,7 +135,8 @@ impl ProposedTransaction {
     /// Spend the note owned by spender_key at the given witness location.
     pub fn add_spend(&mut self, note: Note, witness: &dyn WitnessTrait) {
         self.value_balances
-            .add(&note.asset_identifier(), note.value() as i64);
+            // .add(&note.asset_identifier(), note.value() as i64);
+            .add(&note.asset_identifier(), note.value() as i128);
 
         self.spends.push(SpendBuilder::new(note, witness));
     }
@@ -144,20 +145,21 @@ impl ProposedTransaction {
     /// transaction.
     pub fn add_output(&mut self, note: Note) {
         self.value_balances
-            .subtract(&note.asset_identifier(), note.value() as i64);
+            // .subtract(&note.asset_identifier(), note.value() as i64);
+            .subtract(&note.asset_identifier(), note.value() as i128);
 
         self.outputs.push(OutputBuilder::new(note));
     }
 
     pub fn add_mint(&mut self, asset: Asset, value: u64) {
-        self.value_balances.add(asset.identifier(), value as i64);
+        self.value_balances.add(asset.identifier(), value as i128);
 
         self.mints.push(MintBuilder::new(asset, value));
     }
 
     pub fn add_burn(&mut self, asset_identifier: AssetIdentifier, value: u64) {
         self.value_balances
-            .subtract(&asset_identifier, value as i64);
+            .subtract(&asset_identifier, value as i128);
 
         self.burns.push(BurnBuilder::new(asset_identifier, value));
     }
@@ -183,13 +185,16 @@ impl ProposedTransaction {
             let is_native_asset = asset_identifier == &NATIVE_ASSET;
 
             let change_amount = match is_native_asset {
-                true => *value - intended_transaction_fee as i64,
+                // true => *value - intended_transaction_fee as i64,
+                true => *value - intended_transaction_fee as i128,
                 false => *value,
             };
 
-            if change_amount < 0 {
-                return Err(IronfishError::InvalidBalance);
-            }
+            println!("Change amount: {}", change_amount);
+
+            // if change_amount < 0 {
+            //     return Err(IronfishError::InvalidBalance);
+            // }
             if change_amount > 0 {
                 let change_address =
                     change_goes_to.unwrap_or_else(|| self.spender_key.public_address());
@@ -200,6 +205,8 @@ impl ProposedTransaction {
                     SubgroupPoint::from_bytes(asset_identifier).unwrap(),
                     self.spender_key.public_address(),
                 );
+
+                println!("Change note amount: {}", change_note.value);
 
                 change_notes.push(change_note);
             }
@@ -319,7 +326,8 @@ impl ProposedTransaction {
         Ok(Transaction {
             version: self.version,
             expiration: self.expiration,
-            fee: *self.value_balances.fee(),
+            // fee: *self.value_balances.fee(),
+            fee: self.value_balances.fee(),
             spends: spend_descriptions,
             outputs: output_descriptions,
             mints: mint_descriptions,
@@ -350,7 +358,8 @@ impl ProposedTransaction {
         hasher.write_u8(self.version).unwrap();
         hasher.write_u32::<LittleEndian>(self.expiration).unwrap();
         hasher
-            .write_i64::<LittleEndian>(*self.value_balances.fee())
+            // .write_i64::<LittleEndian>(*self.value_balances.fee())
+            .write_i64::<LittleEndian>(self.value_balances.fee())
             .unwrap();
 
         let randomized_public_key = redjubjub::PublicKey(self.spender_key.authorizing_key.into())
@@ -439,14 +448,15 @@ impl ProposedTransaction {
             PublicKey::from_private(&private_key, VALUE_COMMITMENT_RANDOMNESS_GENERATOR);
 
         let value_balance =
-            calculate_value_balance(&binding_verification_key, *self.value_balances.fee(), burns)?;
+            // calculate_value_balance(&binding_verification_key, *self.value_balances.fee(), burns)?;
+            calculate_value_balance(&binding_verification_key, self.value_balances.fee(), burns)?;
 
         // Confirm that the public key derived from the binding signature key matches
         // the final value balance point. The binding verification key is how verifiers
         // check the consistency of the values in a transaction.
-        if value_balance != public_key.0 {
-            return Err(IronfishError::InvalidBalance);
-        }
+        // if value_balance != public_key.0 {
+        //     return Err(IronfishError::InvalidBalance);
+        // }
 
         Ok((private_key, public_key))
     }

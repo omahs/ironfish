@@ -132,6 +132,37 @@ fn test_transaction() {
 }
 
 #[test]
+fn test_foo() {
+    // (Ignore this, just writing stuff down so i dont forget)
+    // Cases where we might have problems:
+    // - Wrapped add to negative i64
+    // - Wrapped add to positive i64 that casts to a valid u64
+    // - Overflows.. ???
+
+    let key = SaplingKey::generate_key();
+
+    let spend_note = Note::new(
+        key.public_address(),
+        10,
+        "",
+        NATIVE_ASSET_GENERATOR,
+        key.public_address(),
+    );
+    let witness = make_fake_witness(&spend_note);
+
+    let asset = Asset::new(key.public_address(), "foocoin", "").unwrap();
+    let mint_value = u64::MAX - 10;
+
+    let mut ptx = ProposedTransaction::new(key);
+    ptx.add_spend(spend_note, &witness);
+    ptx.add_mint(asset, mint_value);
+    ptx.add_mint(asset, mint_value);
+
+    let tx = ptx.post(None, 1).unwrap();
+    tx.verify().unwrap(); // This fails
+}
+
+#[test]
 fn test_transaction_simple() {
     let spender_key = SaplingKey::generate_key();
     let receiver_key = SaplingKey::generate_key();
