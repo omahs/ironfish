@@ -25,7 +25,6 @@ import {
   useMinersTxFixture,
   useTxSpendsFixture,
 } from '../testUtilities'
-import { makeBlockAfter } from '../testUtilities/helpers/blockchain'
 import { VerificationResultReason } from './verifier'
 
 describe('Verifier', () => {
@@ -261,9 +260,11 @@ describe('Verifier', () => {
     const nodeTest = createNodeTest()
 
     it('says the block with no spends is valid', async () => {
-      const { chain, strategy } = nodeTest
-      strategy.disableMiningReward()
-      const block = await makeBlockAfter(chain, chain.head)
+      const { chain } = nodeTest
+      const block = await useMinerBlockFixture(chain, 2)
+
+      Assert.isEqual(block.counts().nullifiers, 0)
+
       expect((await chain.verifier.verifyConnectedSpends(block)).valid).toBe(true)
     })
 
