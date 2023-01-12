@@ -13,35 +13,38 @@ fn main() {
     let new_params = File::open("new_params").unwrap();
     let mut new_params = BufReader::with_capacity(1024 * 1024, new_params);
 
-    let sapling_spend = phase2::MPCParameters::read(&mut params, false)
-        .expect("couldn't deserialize Sapling Spend params");
-
-    let sapling_output = phase2::MPCParameters::read(&mut params, false)
-        .expect("couldn't deserialize Sapling Output params");
-
-    let sprout_joinsplit = phase2::MPCParameters::read(&mut params, false)
-        .expect("couldn't deserialize Sprout JoinSplit params");
-
-    let new_sapling_spend = phase2::MPCParameters::read(&mut new_params, true)
+    println!("reading spend");
+    let new_ironfish_zkp_spend = phase2::MPCParameters::read(&mut new_params, true)
         .expect("couldn't deserialize Sapling Spend new_params");
 
-    let new_sapling_output = phase2::MPCParameters::read(&mut new_params, true)
+    println!("reading output");
+    let new_ironfish_zkp_output = phase2::MPCParameters::read(&mut new_params, true)
         .expect("couldn't deserialize Sapling Output new_params");
 
-    let new_sprout_joinsplit = phase2::MPCParameters::read(&mut new_params, true)
+    println!("reading mint");
+    let new_ironfish_zkp_mint_asset = phase2::MPCParameters::read(&mut new_params, true)
         .expect("couldn't deserialize Sprout JoinSplit new_params");
 
-    let h1 = match phase2::verify_contribution(&sapling_spend, &new_sapling_spend) {
+    let ironfish_zkp_spend = phase2::MPCParameters::read(&mut params, false)
+        .expect("couldn't deserialize Sapling Spend params");
+
+    let ironfish_zkp_output = phase2::MPCParameters::read(&mut params, false)
+        .expect("couldn't deserialize Sapling Output params");
+
+    let ironfish_zkp_mint_asset = phase2::MPCParameters::read(&mut params, false)
+        .expect("couldn't deserialize Sprout JoinSplit params");
+
+    let h1 = match phase2::verify_contribution(&ironfish_zkp_spend, &new_ironfish_zkp_spend) {
         Ok(hash) => hash,
         Err(_) => panic!("invalid transformation!")
     };
 
-    let h2 = match phase2::verify_contribution(&sapling_output, &new_sapling_output) {
+    let h2 = match phase2::verify_contribution(&ironfish_zkp_output, &new_ironfish_zkp_output) {
         Ok(hash) => hash,
         Err(_) => panic!("invalid transformation!")
     };
 
-    let h3 = match phase2::verify_contribution(&sprout_joinsplit, &new_sprout_joinsplit) {
+    let h3 = match phase2::verify_contribution(&ironfish_zkp_mint_asset, &new_ironfish_zkp_mint_asset) {
         Ok(hash) => hash,
         Err(_) => panic!("invalid transformation!")
     };

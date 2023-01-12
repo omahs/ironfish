@@ -442,7 +442,7 @@ impl MPCParameters {
         }
 
         // Try to load "phase1radix2m{}"
-        let f = match File::open(format!("phase1radix2m{}", exp)) {
+        let f = match File::open(format!("./powersoftau/phase1radix2m{}", exp)) {
             Ok(f) => f,
             Err(e) => {
                 panic!("Couldn't load phase1radix2m{}: {:?}", exp, e);
@@ -454,7 +454,7 @@ impl MPCParameters {
             let mut byte_buffer: [u8; 96] = [0u8; 96];
             reader.read_exact(byte_buffer.as_mut())?;
 
-            let point = bls12_381::G1Affine::from_uncompressed(&byte_buffer).unwrap_or_else(|| G1Affine::identity());
+            let point = bls12_381::G1Affine::from_uncompressed_unchecked(&byte_buffer).unwrap_or_else(|| G1Affine::identity());
 
             if bool::from(point.is_identity()) {
                 return Err(io::Error::new(io::ErrorKind::InvalidData, "point at infinity"));
@@ -467,7 +467,7 @@ impl MPCParameters {
             let mut byte_buffer: [u8; 192] = [0u8; 192];
             reader.read_exact(byte_buffer.as_mut())?;
 
-            let point = bls12_381::G2Affine::from_uncompressed(&byte_buffer).unwrap_or_else(|| G2Affine::identity());
+            let point = bls12_381::G2Affine::from_uncompressed_unchecked(&byte_buffer).unwrap_or_else(|| G2Affine::identity());
 
             if bool::from(point.is_identity()) {
                 return Err(io::Error::new(io::ErrorKind::InvalidData, "point at infinity"));
@@ -598,6 +598,7 @@ impl MPCParameters {
 
         let worker = Worker::new();
 
+        println!("eval 1");
         // Evaluate for inputs.
         eval(
             coeffs_g1.clone(),
@@ -614,6 +615,7 @@ impl MPCParameters {
             &worker
         );
 
+        println!("eval 2");
         // Evaluate for auxillary variables.
         eval(
             coeffs_g1.clone(),
@@ -629,6 +631,8 @@ impl MPCParameters {
             &mut l,
             &worker
         );
+
+        println!("eval done");
 
         // Don't allow any elements be unconstrained, so that
         // the L query is always fully dense.
@@ -657,9 +661,9 @@ impl MPCParameters {
             alpha_g1: alpha,
             beta_g1: beta_g1,
             beta_g2: beta_g2,
-            gamma_g2: G2Affine::identity(),
-            delta_g1: G1Affine::identity(),
-            delta_g2: G2Affine::identity(),
+            gamma_g2: G2Affine::generator(),
+            delta_g1: G1Affine::generator(),
+            delta_g2: G2Affine::generator(),
             ic: ic_affine
         };
 
@@ -714,6 +718,7 @@ impl MPCParameters {
     {
         // Generate a keypair
         let (pubkey, privkey) = keypair(rng, self);
+        println!("pub: {:?}, priv: {:?}", pubkey, privkey);
 
         fn batch_exp(bases: &mut [G1Affine], coeff: bls12_381::Scalar) {
             let mut projective = vec![G1Projective::identity(); bases.len()];
@@ -729,6 +734,7 @@ impl MPCParameters {
                 for (bases, projective) in bases.chunks_mut(chunk_size)
                                                        .zip(projective.chunks_mut(chunk_size))
                 {
+                    println!("spawning chunk");
                     scope.spawn(move || {
                         let mut wnaf = Wnaf::new();
 
@@ -930,6 +936,7 @@ impl MPCParameters {
 
         writer.write_u32::<BigEndian>(self.contributions.len() as u32)?;
         for pubkey in &self.contributions {
+            println!("writing pub key {:?}", pubkey);
             pubkey.write(&mut writer)?;
         }
 
@@ -946,6 +953,7 @@ impl MPCParameters {
     {
         let params = Parameters::read(&mut reader, checked)?;
 
+        println!("read params");
         let mut cs_hash = [0u8; 64];
         reader.read_exact(&mut cs_hash)?;
 
@@ -964,7 +972,7 @@ impl MPCParameters {
 
 /// This allows others to verify that you contributed. The hash produced
 /// by `MPCParameters::contribute` is just a BLAKE2b hash of this object.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct PublicKey {
     /// This is the delta (in G1) after the transformation, kept so that we
     /// can check correctness of the public keys without having the entire
@@ -1010,6 +1018,10 @@ impl PublicKey {
         let delta_after = G1Affine::from_uncompressed(&g1_repr).unwrap_or_else(|| G1Affine::identity());
 
         if bool::from(delta_after.is_identity()) {
+            let p = G1Affine::from_uncompressed_unchecked(&g1_repr).unwrap();
+            println!("1 on curve: {:?}, torsion_free: {:?}", p.is_on_curve().unwrap_u8() == 1, p.is_torsion_free().unwrap_u8() == 1);
+            println!("1 element: {:?}", p);
+            println!("bytes: {:?}", g1_repr.bytes());
             return Err(io::Error::new(io::ErrorKind::InvalidData, "point at infinity"));
         }
 
@@ -1017,6 +1029,8 @@ impl PublicKey {
         let s = G1Affine::from_uncompressed(&g1_repr).unwrap_or_else(|| G1Affine::identity());
 
         if bool::from(s.is_identity()) {
+            let p = G1Affine::from_uncompressed_unchecked(&g1_repr).unwrap();
+            println!("2 on curve: {:?}, torsion_free: {:?}", p.is_on_curve(), p.is_torsion_free());
             return Err(io::Error::new(io::ErrorKind::InvalidData, "point at infinity"));
         }
 
@@ -1024,6 +1038,8 @@ impl PublicKey {
         let s_delta = G1Affine::from_uncompressed(&g1_repr).unwrap_or_else(|| G1Affine::identity());
 
         if bool::from(s_delta.is_identity()) {
+            let p = G1Affine::from_uncompressed_unchecked(&g1_repr).unwrap();
+            println!("3 on curve: {:?}, torsion_free: {:?}", p.is_on_curve(), p.is_torsion_free());
             return Err(io::Error::new(io::ErrorKind::InvalidData, "point at infinity"));
         }
 
@@ -1031,6 +1047,8 @@ impl PublicKey {
         let r_delta = G2Affine::from_uncompressed(&g2_repr).unwrap_or_else(|| G2Affine::identity());
 
         if bool::from(r_delta.is_identity()) {
+            let p = G2Affine::from_uncompressed_unchecked(&g2_repr).unwrap();
+            println!("3 on curve: {:?}, torsion_free: {:?}", p.is_on_curve(), p.is_torsion_free());
             return Err(io::Error::new(io::ErrorKind::InvalidData, "point at infinity"));
         }
 
@@ -1258,6 +1276,7 @@ fn merge_pairs(v1: &[G1Affine], v2: &[G1Affine]) -> (G1Affine, G1Affine)
 
 /// This needs to be destroyed by at least one participant
 /// for the final parameters to be secure.
+#[derive(Debug)]
 struct PrivateKey {
     delta: bls12_381::Scalar
 }
@@ -1301,6 +1320,7 @@ fn keypair<R: Rng>(
     let r = hash_to_g2(h.as_ref());
     let r_delta = G2Affine::from(r.mul(delta));
 
+    println!("curr: {:?}", current.params.vk.delta_g1);
     (
         PublicKey {
             delta_after: G1Affine::from(current.params.vk.delta_g1.mul(delta)),

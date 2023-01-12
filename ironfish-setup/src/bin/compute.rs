@@ -14,24 +14,24 @@ fn main() {
     let new_params = File::create("new_params").expect("couldn't create `./new_params`");
     let mut new_params = BufWriter::with_capacity(1024*1024, new_params);
 
-    let mut sapling_spend = phase2::MPCParameters::read(&mut current_params, false)
+    let mut ironfish_zkp_spend = phase2::MPCParameters::read(&mut current_params, false)
         .expect("couldn't deserialize Sapling Spend params");
 
-    let mut sapling_output = phase2::MPCParameters::read(&mut current_params, false)
+    let mut ironfish_zkp_output = phase2::MPCParameters::read(&mut current_params, false)
         .expect("couldn't deserialize Sapling Output params");
 
-    let mut sprout_joinsplit = phase2::MPCParameters::read(&mut current_params, false)
+    let mut ironfish_zkp_mint_asset = phase2::MPCParameters::read(&mut current_params, false)
         .expect("couldn't deserialize Sprout JoinSplit params");
 
     let rng = &mut rand::thread_rng();
 
-    let h1 = sapling_spend.contribute(rng);
-    let h2 = sapling_output.contribute(rng);
-    let h3 = sprout_joinsplit.contribute(rng);
+    let h1 = ironfish_zkp_spend.contribute(rng);
+    let h2 = ironfish_zkp_output.contribute(rng);
+    let h3 = ironfish_zkp_mint_asset.contribute(rng);
 
-    sapling_spend.write(&mut new_params).expect("couldn't write new Sapling Spend params");
-    sapling_output.write(&mut new_params).expect("couldn't write new Sapling Spend params");
-    sprout_joinsplit.write(&mut new_params).expect("couldn't write new Sapling Spend params");
+    ironfish_zkp_spend.write(&mut new_params).expect("couldn't write new Sapling Spend params");
+    ironfish_zkp_output.write(&mut new_params).expect("couldn't write new Sapling Spend params");
+    ironfish_zkp_mint_asset.write(&mut new_params).expect("couldn't write new Sapling Spend params");
 
     let mut h = Blake2b::new(64);
     h.update(&h1);

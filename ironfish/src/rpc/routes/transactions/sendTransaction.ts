@@ -81,17 +81,17 @@ router.register<typeof SendTransactionRequestSchema, SendTransactionResponse>(
     }
 
     // The node must be connected to the network first
-    if (!node.peerNetwork.isReady) {
-      throw new ValidationError(
-        `Your node must be connected to the Iron Fish network to send a transaction`,
-      )
-    }
+    // if (!node.peerNetwork.isReady) {
+    //   throw new ValidationError(
+    //     `Your node must be connected to the Iron Fish network to send a transaction`,
+    //   )
+    // }
 
-    if (!node.chain.synced) {
-      throw new ValidationError(
-        `Your node must be synced with the Iron Fish network to send a transaction. Please try again later`,
-      )
-    }
+    // if (!node.chain.synced) {
+    //   throw new ValidationError(
+    //     `Your node must be synced with the Iron Fish network to send a transaction. Please try again later`,
+    //   )
+    // }
 
     const receives = transaction.receives.map((receive) => {
       return {
