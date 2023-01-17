@@ -278,7 +278,7 @@ export class Peer {
    */
   setWebSocketConnection(connection: WebSocketConnection): void {
     if (this.state.type !== 'DISCONNECTED' && this.state.connections.webSocket) {
-      this.logger.warn('Already have a WebSocket connection, ignoring the new one')
+      this.logger.debug('Already have a WebSocket connection, ignoring the new one')
       return
     }
 
