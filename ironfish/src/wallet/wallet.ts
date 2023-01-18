@@ -37,6 +37,7 @@ import {
 import { WorkerPool } from '../workerPool'
 import { DecryptedNote, DecryptNoteOptions } from '../workerPool/tasks/decryptNotes'
 import { Account, AccountImport } from './account'
+import { AssetBalances } from './assetBalances'
 import { NotEnoughFundsError } from './errors'
 import { MintAssetOptions } from './interfaces/mintAssetOptions'
 import { validateAccount } from './validator'
@@ -372,6 +373,8 @@ export class Wallet {
     })
 
     for (const account of accounts) {
+      const assetBalanceDeltas = new AssetBalances()
+
       await this.walletDb.db.transaction(async (tx) => {
         const transactions = await this.chain.getBlockTransactions(blockHeader)
 
@@ -394,10 +397,24 @@ export class Wallet {
             continue
           }
 
-          await account.connectTransaction(blockHeader, transaction, decryptedNotes, tx)
+          const transactionDeltas = await account.connectTransaction(
+            blockHeader,
+            transaction,
+            decryptedNotes,
+            tx,
+          )
+
+          assetBalanceDeltas.update(transactionDeltas)
 
           scan?.signal(blockHeader.sequence)
         }
+
+        await account.updateUnconfirmedBalances(
+          assetBalanceDeltas,
+          blockHeader.hash,
+          blockHeader.sequence,
+          tx,
+        )
 
         await account.updateHead({ hash: blockHeader.hash, sequence: blockHeader.sequence }, tx)
       })
@@ -412,16 +429,27 @@ export class Wallet {
     })
 
     for (const account of accounts) {
+      const assetBalanceDeltas = new AssetBalances()
+
       await this.walletDb.db.transaction(async (tx) => {
         const transactions = await this.chain.getBlockTransactions(header)
 
         for (const { transaction } of transactions.slice().reverse()) {
-          await account.disconnectTransaction(header, transaction, tx)
+          const transactionDeltas = await account.disconnectTransaction(header, transaction, tx)
+
+          assetBalanceDeltas.update(transactionDeltas)
 
           if (transaction.isMinersFee()) {
             await account.deleteTransaction(transaction, tx)
           }
         }
+
+        await account.updateUnconfirmedBalances(
+          assetBalanceDeltas,
+          header.previousBlockHash,
+          header.sequence - 1,
+          tx,
+        )
 
         await account.updateHead(
           { hash: header.previousBlockHash, sequence: header.sequence - 1 },
