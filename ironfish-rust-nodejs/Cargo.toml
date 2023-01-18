@@ -17,6 +17,7 @@ crate-type = ["cdylib"]
 [dependencies]
 base64 = "0.13.0"
 ironfish_rust = { path = "../ironfish-rust" }
+ironfish_mpc = { path = "../ironfish-mpc" }
 napi-derive = "2.9.3"
 
 [dependencies.napi]
